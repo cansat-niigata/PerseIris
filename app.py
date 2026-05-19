@@ -2,7 +2,7 @@ import streamlit as st
 import math
 
 # ページの基本設定
-st.set_page_config(page_title="POLARiS 落下分散シミュレータ", layout="centered")
+st.set_page_config(page_title="PerseIris 落下分散シミュレータ", layout="centered")
 
 st.title("PerseIris 落下分散シミュレータ 🛰️")
 st.markdown("投下高度の安全評価ツールです made by nakahen")
