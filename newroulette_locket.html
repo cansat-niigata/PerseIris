@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>CANSAT Meeting Draw - Super Lightweight</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@900&display=swap');
+
+        body {
+            background-color: #03040a;
+            background-image: 
+                radial-gradient(ellipse at 20% 30%, rgba(60, 20, 100, 0.4) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 60%, rgba(15, 50, 120, 0.4) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 80%, rgba(80, 20, 50, 0.25) 0%, transparent 60%),
+                radial-gradient(circle at 50% 50%, #03040a 0%, #000000 100%);
+            background-blend-mode: screen;
+            
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: white;
+            font-family: 'Orbitron', sans-serif;
+            user-select: none;
+            overflow: hidden;
+            position: relative; 
+        }
+
+        #universe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1; 
+            pointer-events: none; 
+        }
+
+        /* ロケットと煙のCSSは不要になったため削除しました */
+
+        .olympic-container { 
+            text-align: center; 
+            width: 550px; 
+            position: relative; 
+            z-index: 10; 
+        }
+
+        .title { font-size: 1.2rem; color: #d4af37; margin-bottom: 20px; letter-spacing: 2px; text-transform: uppercase; text-shadow: 0 0 10px rgba(212, 175, 55, 0.5); }
+
+        .slot-machine {
+            position: relative;
+            height: 160px;
+            overflow: hidden;
+            border: 8px solid #d4af37;
+            background-color: rgba(0, 0, 0, 0.85); 
+            border-radius: 4px;
+            box-shadow: 0 0 40px rgba(212, 175, 55, 0.5), inset 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        .slot-strip {
+            position: absolute;
+            width: 100%;
+            top: 0;
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            will-change: transform; 
+        }
+
+        .category-item {
+            height: 160px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 5rem;
+            color: #d4af37;
+            text-shadow: 0 0 20px rgba(212, 175, 55, 0.9);
+            will-change: transform;
+        }
+
+        .winner-flash {
+            animation: flash 0.08s infinite alternate;
+        }
+
+        @keyframes flash {
+            from { background-color: rgba(212, 175, 55, 0.9); color: #000; }
+            to { background-color: rgba(0, 0, 0, 0.8); color: #fff; }
+        }
+
+        button {
+            margin-top: 40px;
+            padding: 15px 60px;
+            font-size: 1.5rem;
+            width: 320px;
+            background: linear-gradient(135deg, #f9d976, #d4af37);
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 50px;
+            color: black;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        button.stop-mode { 
+            background: linear-gradient(135deg, #ff6b6b, #ee5253); 
+            color: white; 
+            box-shadow: 0 0 20px rgba(238, 82, 83, 0.4);
+        }
+        button:hover { transform: scale(1.05); filter: brightness(1.1); box-shadow: 0 0 30px rgba(212, 175, 55, 0.6); }
+        button:active { transform: scale(0.95); }
+        button:disabled { opacity: 0.3; transform: none; cursor: not-allowed; }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.95) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.95) 100%);
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="universe"></canvas>
+
+<div class="olympic-container">
+    <div class="title">May Cansat monthly meeting Draw</div>
+    <div id="machine-frame" class="slot-machine">
+        <div class="overlay"></div>
+        <div id="strip" class="slot-strip"></div>
+    </div>
+    <button id="actionBtn" onclick="handleButtonClick()">DRAW</button>
+</div>
+
+<script>
+    // --- Canvasを用いた描画システム（星、ロケット、煙を全てここで処理） ---
+    const canvas = document.getElementById('universe');
+    const ctx = canvas.getContext('2d');
+    let width, height;
+    
+    // オブジェクトの配列
+    let stars = [];
+    let smokeParticles = [];
+    const starColors = ['#ffffff', '#e0f7fa', '#fff9c4', '#ffe0b2', '#ffcdd2', '#b3e5fc'];
+
+    // ロケットの状態管理
+    let rocket = {
+        active: false,
+        startTime: 0,
+        duration: 5000,
+        startX: 0, startY: 0,
+        endX: 0, endY: 0,
+        x: 0, y: 0,
+        angle: 0
+    };
+
+    function resizeCanvas() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+        createStars();
+    }
+
+    function createStars() {
+        stars = [];
+        const numStars = Math.floor((width * height) / 2500); 
+        for (let i = 0; i < numStars; i++) {
+            stars.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                radius: Math.random() * 2,
+                color: starColors[Math.floor(Math.random() * starColors.length)],
+                speed: (Math.random() * 0.2 + 0.02) * (Math.random() * 1.6 + 0.5),
+                alpha: Math.random(),
+                alphaChange: (Math.random() * 0.015 - 0.0075)
+            });
+        }
+    }
+
+    // 煙パーティクルをCanvas内に追加
+    function spawnCanvasSmoke(x, y) {
+        smokeParticles.push({
+            x: x,
+            y: y,
+            radius: 10,
+            life: 1.0,      // 1.0から0へ減衰
+            decay: 0.02,    // 減衰スピード
+            spreadX: (Math.random() - 0.5) * 2 // 煙の広がり
+        });
+    }
+
+    // メインの描画ループ
+    function animateUniverse(now) {
+        // 背景クリア
+        ctx.clearRect(0, 0, width, height);
+
+        // 1. 星の描画
+        stars.forEach(star => {
+            star.alpha += star.alphaChange;
+            if (star.alpha <= 0.05 || star.alpha >= 0.9) star.alphaChange *= -1;
+            star.y -= star.speed;
+            if (star.y < 0) {
+                star.y = height;
+                star.x = Math.random() * width;
+            }
+            ctx.globalAlpha = Math.max(0, Math.min(1, star.alpha));
+            ctx.fillStyle = star.color;
+            ctx.beginPath();
+            ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // 2. 煙の計算と描画（DOMを使わず計算だけなので非常に軽い）
+        for (let i = smokeParticles.length - 1; i >= 0; i--) {
+            let p = smokeParticles[i];
+            p.life -= p.decay;
+            p.radius += 0.8; // 徐々に大きく
+            p.x += p.spreadX;
+            
+            if (p.life <= 0) {
+                smokeParticles.splice(i, 1); // 寿命が尽きたら配列から削除
+            } else {
+                ctx.globalAlpha = p.life * 0.6;
+                // 煙の色（オレンジから白へ）
+                ctx.fillStyle = p.life > 0.5 ? 'rgba(255, 165, 0, 0.8)' : 'rgba(150, 150, 150, 0.5)';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // 3. ロケットの計算と描画
+        if (rocket.active) {
+            const elapsed = performance.now() - rocket.startTime;
+            const progress = Math.min(elapsed / rocket.duration, 1);
+
+            // 座標計算
+            const currentX = rocket.startX + (rocket.endX - rocket.startX) * progress;
+            const currentY = rocket.startY + (rocket.endY - rocket.startY) * progress;
+
+            // 揺れの計算
+            const wobbleAngle = Math.sin(progress * Math.PI * 50) * 0.15; // ラジアン
+            const wobbleOffsetX = Math.sin(progress * Math.PI * 30) * 15; 
+            const wobbleOffsetY = Math.cos(progress * Math.PI * 30) * 15; 
+
+            rocket.x = currentX + wobbleOffsetX;
+            rocket.y = currentY + wobbleOffsetY;
+
+            // 煙の生成（DOMを作らないので毎フレーム生成しても軽い）
+            spawnCanvasSmoke(rocket.x - 30, rocket.y + 40);
+
+            // ロケット（絵文字）の描画
+            ctx.globalAlpha = 1.0;
+            ctx.save();
+            ctx.translate(rocket.x, rocket.y);
+            ctx.rotate(wobbleAngle);
+            ctx.font = "80px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.shadowColor = "rgba(255, 150, 0, 1)";
+            ctx.shadowBlur = 20;
+            ctx.fillText("🚀", 0, 0);
+            ctx.restore();
+
+            if (progress >= 1) {
+                rocket.active = false;
+            }
+        }
+
+        ctx.globalAlpha = 1.0;
+        requestAnimationFrame(animateUniverse);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+    requestAnimationFrame(animateUniverse);
+
+    // --- ロケット発射トリガー ---
+    function launchRocket() {
+        if (rocket.active) return;
+        rocket.active = true;
+        rocket.startTime = performance.now();
+        rocket.startX = -100;
+        rocket.startY = window.innerHeight + 100;
+        rocket.endX = window.innerWidth + 100;
+        rocket.endY = -100;
+    }
+
+
+    // --- ルーレットのスクリプト ---
+    const categories = ["色部　知寿", "黒田　透矢", "菅原　優太朗", "髙橋　櫂","横田　瑛士"];
+    const strip = document.getElementById('strip');
+    const btn = document.getElementById('actionBtn');
+    const frame = document.getElementById('machine-frame');
+    const itemHeight = 160;
+
+    let isSpinning = false;
+    let isStopping = false;
+    let currentY = 0;
+    let velocity = 0;
+    let lastTickY = 0; 
+    
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playTickSound() {
+        if(audioCtx.state === 'suspended') return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(800, audioCtx.currentTime); 
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.03);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.03);
+    }
+
+    function playWinSound() {
+        if(audioCtx.state === 'suspended') return;
+        const notes = [440, 554.37, 659.25, 880];
+        notes.forEach((freq, i) => {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime + (i * 0.05));
+            gain.gain.setValueAtTime(0, audioCtx.currentTime + (i * 0.05));
+            gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + (i * 0.05) + 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 2);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(audioCtx.currentTime + (i * 0.05));
+            osc.stop(audioCtx.currentTime + 2);
+        });
+    }
+
+    function init() {
+        let html = "";
+        for(let i=0; i<50; i++) { 
+            categories.forEach(cat => {
+                html += `<div class="category-item">${cat}</div>`;
+            });
+        }
+        strip.innerHTML = html;
+    }
+
+    function handleButtonClick() {
+        if (!isSpinning && !isStopping) startSpin();
+        else if (isSpinning && !isStopping) stopSpin();
+    }
+
+    function startSpin() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        isSpinning = true;
+        btn.textContent = "STOP";
+        btn.classList.add('stop-mode');
+        frame.classList.remove('winner-flash');
+        velocity = 40;
+        update();
+    }
+
+    function update() {
+        currentY += velocity;
+        const cycleHeight = categories.length * itemHeight;
+        
+        if (currentY >= cycleHeight * 40) currentY %= cycleHeight;
+
+        strip.style.transform = `translateY(-${currentY}px)`;
+
+        if (currentY - lastTickY >= itemHeight / 2) {
+            if (velocity > 0.3) {
+                playTickSound();
+            }
+            lastTickY = currentY;
+        }
+
+        if (isSpinning || isStopping) {
+            requestAnimationFrame(update);
+        }
+    }
+
+    function stopSpin() {
+        isSpinning = false;
+        isStopping = true;
+        btn.disabled = true;
+        btn.textContent = "DECELERATING...";
+
+        const stopDuration = 7000; 
+        const startVelocity = velocity;
+        const startTime = performance.now();
+
+        function decelerate(now) {
+            const elapsed = now - startTime;
+            const progress = Math.min(elapsed / stopDuration, 1);
+            
+            const easeOut = Math.pow(1 - progress, 3.5);
+            velocity = startVelocity * easeOut;
+
+            if (progress < 1) {
+                requestAnimationFrame(decelerate);
+            } else {
+                finishSpin();
+            }
+        }
+        requestAnimationFrame(decelerate);
+    }
+
+    function finishSpin() {
+        velocity = 0;
+        isStopping = false;
+        const finalY = Math.round(currentY / itemHeight) * itemHeight;
+        strip.style.transition = "transform 0.8s cubic-bezier(0.1, 0.8, 0.2, 1)";
+        strip.style.transform = `translateY(-${finalY}px)`;
+        currentY = finalY;
+
+        setTimeout(() => {
+            playWinSound();
+            frame.classList.add('winner-flash');
+            btn.disabled = false;
+            btn.textContent = "DRAW";
+            btn.classList.remove('stop-mode');
+            strip.style.transition = "none";
+            
+            // ルーレット停止後にCanvas上でロケットを発射
+            launchRocket();
+
+        }, 800);
+    }
+
+    init();
+</script>
+
+</body>
+</html>
